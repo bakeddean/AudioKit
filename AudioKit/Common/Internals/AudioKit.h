@@ -139,6 +139,7 @@ FOUNDATION_EXPORT const unsigned char AudioKitVersionString[];
 #import "AKAutoPannerDSP.hpp"
 #import "AKBalancerAudioUnit.h"
 #import "AKBoosterDSP.hpp"
+#import "AKChannelSelectorDSP.hpp"
 #import "AKPannerDSP.hpp"
 #import "AKStereoFieldLimiterDSP.hpp"
 
