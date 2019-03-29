@@ -16,67 +16,124 @@ public typealias DeviceID = String
 open class AKDevice: NSObject {
     /// The human-readable name for the device.
     open var name: String
+
+    // Make these public let?
     open var nInputChannels: Int?
     open var nOutputChannels: Int?
 
     /// The device identifier.
     open fileprivate(set) var deviceID: DeviceID
 
-    /// Initialize the device
+    #if !os(macOS)
+    var portDescription: AVAudioSessionPortDescription
+    var dataSource: AVAudioSessionDataSourceDescription?
+    // port type
+    #endif
+
+    // MARK: - macOS
+
+    #if os(macOS)
+    /// Initialize the device (macOS)
     ///
     /// - Parameters:
     ///   - name: The human-readable name for the device.
     ///   - deviceID: The device identifier.
-    ///
-    public init(name: String, deviceID: DeviceID, dataSource: String = "") {
+    public init(name: String, deviceID: DeviceID) {
         self.name = name
         self.deviceID = deviceID
-        #if !os(macOS)
-        if dataSource != "" {
-            self.deviceID = "\(deviceID) \(dataSource)"
-        }
-        #endif
         super.init()
-    }
-
-    #if os(macOS)
-    public convenience init(ezAudioDevice: EZAudioDevice) {
-        self.init(name: ezAudioDevice.name, deviceID: ezAudioDevice.deviceID)
-        self.nInputChannels = ezAudioDevice.inputChannelCount
-        self.nOutputChannels = ezAudioDevice.outputChannelCount
     }
     #endif
 
+    // MARK: - iOS, tvOS, watchOS
+
     #if !os(macOS)
-    /// Initialize the device
+
+    /// Initialize the device (iOS, tvOS, watchOS)
+    ///
+    /// - Parameters:
+    ///   - portName: The name of a AVAudioSessionPortDescription.
+    ///   - dataSourceName: The name of a AVAudioSessionDataSourceDescription.
+    convenience init?(portName: String, dataSourceName: String? = nil) {
+        let availableInputs = AVAudioSession.sharedInstance().availableInputs
+
+        // Make sure the portName parameter is valid.
+        guard let portDescription = (availableInputs?.filter { $0.portName == portName} )?.first else {
+            return nil
+        }
+
+        // If no dataSourceName, initialize an AKDevice with just the portDescription.
+        guard let dataSource = dataSourceName, !dataSource.isEmpty else {
+            self.init(port: portDescription)
+            return
+        }
+
+        // Else, make sure the dataSourceName parameter is valid.
+        guard let dataSourceDescription = (portDescription.dataSources?.filter { $0.dataSourceName == dataSource })?.first else {
+            return nil
+        }
+        self.init(port: portDescription, dataSource: dataSourceDescription)
+    }
+
+    /// Initialize the device (iOS, tvOS, watchOS)
     ///
     /// - Parameters:
     ///   - portDescription: A port description object that describes a single
     /// input or output port associated with an audio route.
-    ///
-    public convenience init(portDescription: AVAudioSessionPortDescription) {
-        let portData = [portDescription.uid, portDescription.selectedDataSource?.dataSourceName]
-        let deviceID = portData.compactMap { $0 }.joined(separator: " ")
-        self.init(name: portDescription.portName, deviceID: deviceID)
+    ///   - dataSource:
+    public init(port: AVAudioSessionPortDescription, dataSource: AVAudioSessionDataSourceDescription? = nil) {
+        name = port.portName
+        deviceID = port.uid
+
+        // Get input/output
+        if let channels = port.channels {
+            nInputChannels = channels.count
+            nOutputChannels = channels.count
+        }
+        portDescription = port
+        // portType AVAudioSession.Port
+        print(port.portType)
+
+        // Check if given a dataSource - if not and portDescrition has one, default to the first
+        if dataSource != nil {
+            self.dataSource = dataSource
+        } else {
+            self.dataSource = port.dataSources?.first
+        }
     }
 
-    /// Return a port description matching the devices name.
-    var portDescription: AVAudioSessionPortDescription? {
-        return AVAudioSession.sharedInstance().availableInputs?.filter { $0.portName == name }.first
+    // Factory method to return an array of AKDevices from a AVAudioSessionPortDescription's.
+    static func devicesFrom(port: AVAudioSessionPortDescription) -> [AKDevice] {
+        guard let dataSources = port.dataSources, !dataSources.isEmpty else {
+            return [AKDevice(port: port)]
+        }
+        return dataSources.map { AKDevice(port: port, dataSource: $0) }
     }
 
-    /// Return a data source matching the devices deviceID.
-    var dataSource: AVAudioSessionDataSourceDescription? {
-        let dataSources = portDescription?.dataSources ?? []
-        return dataSources.filter { deviceID.contains($0.dataSourceName) }.first
-    }
     #endif
+
+    // MARK: - Shared
+
+    /// Initialize the device (macOS, iOS, tvOS, watchOS)
+    ///
+    /// - Parameters:
+    ///   - ezAudioDevice: A EZAudioDevice object.
+    public convenience init(ezAudioDevice: EZAudioDevice) {
+        #if os(macOS)
+        self.init(name: ezAudioDevice.name, deviceID: ezAudioDevice.deviceID)
+        nInputChannels = ezAudioDevice.inputChannelCount
+        nOutputChannels = ezAudioDevice.outputChannelCount
+        #else
+        self.init(port: ezAudioDevice.port, dataSource: ezAudioDevice.dataSource)
+        #endif
+    }
 
     /// Printable device description
     override open var description: String {
         return "<Device: \(name) (\(deviceID))>"
     }
 
+    // Fix this? just use deviceID?
     override open func isEqual(_ object: Any?) -> Bool {
         if let object = object as? AKDevice {
             return self.name == object.name && self.deviceID == object.deviceID
