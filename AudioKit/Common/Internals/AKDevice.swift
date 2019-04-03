@@ -27,6 +27,7 @@ open class AKDevice: NSObject {
     #if !os(macOS)
     var portDescription: AVAudioSessionPortDescription
     var dataSource: AVAudioSessionDataSourceDescription?
+    open var dataSourceName: String?
     // port type
     #endif
 
@@ -52,6 +53,36 @@ open class AKDevice: NSObject {
     /// Initialize the device (iOS, tvOS, watchOS)
     ///
     /// - Parameters:
+    ///   - portDescription: A port description object that describes a single
+    /// input or output port associated with an audio route.
+    ///   - dataSource:
+    public init(port: AVAudioSessionPortDescription, dataSource: AVAudioSessionDataSourceDescription? = nil) {
+        name = port.portName
+
+        deviceID = port.uid
+
+        // Get input/output
+        if let channels = port.channels {
+            nInputChannels = channels.count
+            nOutputChannels = channels.count
+        }
+        portDescription = port
+        // portType AVAudioSession.Port
+        print(port.portType)
+
+        // Check if given a dataSource - if not and portDescrition has one, default to the selected
+        if dataSource != nil {
+            self.dataSource = dataSource
+            dataSourceName = dataSource?.dataSourceName
+        } else {
+            self.dataSource = port.selectedDataSource
+            dataSourceName = port.selectedDataSource?.dataSourceName
+        }
+    }
+
+    /// Initialize the device (iOS, tvOS, watchOS)
+    ///
+    /// - Parameters:
     ///   - portName: The name of a AVAudioSessionPortDescription.
     ///   - dataSourceName: The name of a AVAudioSessionDataSourceDescription.
     convenience init?(portName: String, dataSourceName: String? = nil) {
@@ -73,33 +104,6 @@ open class AKDevice: NSObject {
             return nil
         }
         self.init(port: portDescription, dataSource: dataSourceDescription)
-    }
-
-    /// Initialize the device (iOS, tvOS, watchOS)
-    ///
-    /// - Parameters:
-    ///   - portDescription: A port description object that describes a single
-    /// input or output port associated with an audio route.
-    ///   - dataSource:
-    public init(port: AVAudioSessionPortDescription, dataSource: AVAudioSessionDataSourceDescription? = nil) {
-        name = port.portName
-        deviceID = port.uid
-
-        // Get input/output
-        if let channels = port.channels {
-            nInputChannels = channels.count
-            nOutputChannels = channels.count
-        }
-        portDescription = port
-        // portType AVAudioSession.Port
-        print(port.portType)
-
-        // Check if given a dataSource - if not and portDescrition has one, default to the first
-        if dataSource != nil {
-            self.dataSource = dataSource
-        } else {
-            self.dataSource = port.dataSources?.first
-        }
     }
 
     // Factory method to return an array of AKDevices from a AVAudioSessionPortDescription's.
@@ -130,13 +134,21 @@ open class AKDevice: NSObject {
 
     /// Printable device description
     override open var description: String {
-        return "<Device: \(name) (\(deviceID))>"
+        #if os(macOS)
+            return "<Device: \(name) (\(deviceID))>"
+        #else
+            return "\(name) \(dataSourceName ?? "")"
+        #endif
     }
 
     // Fix this? just use deviceID?
     override open func isEqual(_ object: Any?) -> Bool {
         if let object = object as? AKDevice {
+            #if os(macOS)
             return self.name == object.name && self.deviceID == object.deviceID
+            #else
+            return self.deviceID == object.deviceID && self.dataSourceName == object.dataSourceName
+            #endif
         }
         return false
     }

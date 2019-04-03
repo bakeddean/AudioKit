@@ -92,21 +92,10 @@ open class AudioKit: NSObject {
             EZAudioUtilities.setShouldExitOnCheckResultFail(false)
             return EZAudioDevice.inputDevices().map { AKDevice(ezAudioDevice: $0 as! EZAudioDevice) }
         #else
-            var returnDevices = [AKDevice]()
-            if let devices = AVAudioSession.sharedInstance().availableInputs {
-                for device in devices {
-                    if device.dataSources == nil || device.dataSources!.isEmpty {
-                        returnDevices.append(AKDevice(portDescription: device))
-                    } else {
-                        for dataSource in device.dataSources! {
-                            returnDevices.append(AKDevice(name: device.portName,
-                                                          deviceID: "\(device.uid) \(dataSource.dataSourceName)"))
-                        }
-                    }
-                }
-                return returnDevices
+            guard let devices = AVAudioSession.sharedInstance().availableInputs else {
+                return nil
             }
-            return nil
+            return devices.map { AKDevice.devicesFrom(port: $0) }.flatMap{ $0 }
         #endif
     }
 
@@ -116,13 +105,9 @@ open class AudioKit: NSObject {
             EZAudioUtilities.setShouldExitOnCheckResultFail(false)
             return EZAudioDevice.outputDevices().map { AKDevice(ezAudioDevice: $0 as! EZAudioDevice) }
         #else
-            let devs = AVAudioSession.sharedInstance().currentRoute.outputs
-            if devs.isNotEmpty {
-                var outs = [AKDevice]()
-                for dev in devs {
-                    outs.append(AKDevice(name: dev.portName, deviceID: dev.uid))
-                }
-                return outs
+            let devices = AVAudioSession.sharedInstance().currentRoute.outputs
+            if devices.isNotEmpty {
+                return devices.map { AKDevice.devicesFrom(port: $0) }.flatMap{ $0 }
             }
             return nil
         #endif
@@ -136,12 +121,12 @@ open class AudioKit: NSObject {
             }
         #else
             if let portDescription = AVAudioSession.sharedInstance().preferredInput {
-                return AKDevice(portDescription: portDescription)
+                return AKDevice(port: portDescription)
             } else {
                 let inputDevices = AVAudioSession.sharedInstance().currentRoute.inputs
                 if inputDevices.isNotEmpty {
                     for device in inputDevices {
-                        return AKDevice(portDescription: device)
+                        return AKDevice(port: device)
                     }
                 }
             }
@@ -156,9 +141,9 @@ open class AudioKit: NSObject {
                 return AKDevice(name: dev.name, deviceID: dev.deviceID)
             }
         #else
-            let devs = AVAudioSession.sharedInstance().currentRoute.outputs
-            if devs.isNotEmpty {
-                return AKDevice(name: devs[0].portName, deviceID: devs[0].uid)
+            let devices = AVAudioSession.sharedInstance().currentRoute.outputs
+            if devices.isNotEmpty {
+                return AKDevice(port: devices.first!)
             }
 
         #endif
@@ -180,10 +165,7 @@ open class AudioKit: NSObject {
             }
         #else
             // Set the port description first eg iPhone Microphone / Headset Microphone etc
-            guard let portDescription = input.portDescription else {
-                throw AKError.DeviceNotFound
-            }
-            try AVAudioSession.sharedInstance().setPreferredInput(portDescription)
+            try AVAudioSession.sharedInstance().setPreferredInput(input.portDescription)
 
             // Set the data source (if any) eg. Back/Bottom/Front microphone
             guard let dataSourceDescription = input.dataSource else {
